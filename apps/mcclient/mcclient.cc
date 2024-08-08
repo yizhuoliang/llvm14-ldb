@@ -512,39 +512,36 @@ std::vector<work_unit> ClientWorker(
 
   printf("Started sending requests\n");
   for (unsigned int i = 0; i < wsize; ++i) {
-    barrier();
-    uint64_t now = rdtsc();
-    barrier();
-    if (now - expstart < w[i].start_us * CYCLES_PER_US) {
-      double sleep_for = w[i].start_us - 1.0 * (now - expstart) / CYCLES_PER_US;
-      __time_delay_us(sleep_for);
-      //usleep(w[i].start_us - 1.0 * (now - expstart) / CYCLES_PER_US);
-    }
-    if ((now - expstart) > (w[i].start_us + kMaxCatchUpUS) * CYCLES_PER_US)
-      continue;
+      barrier();
+      uint64_t now = rdtsc();
+      barrier();
+      if (now - expstart < w[i].start_us * CYCLES_PER_US) {
+          double sleep_for = w[i].start_us - 1.0 * (now - expstart) / CYCLES_PER_US;
+          __time_delay_us(sleep_for);  // Make sure this isn't causing a long or infinite wait
+          printf("Sending request id %d at scheduled time\n", i);
+      }
+      if ((now - expstart) > (w[i].start_us + kMaxCatchUpUS) * CYCLES_PER_US) {
+          printf("Skipping request id %d due to lateness\n", i);
+          continue;
+      }
 
-    w[i].idx = i * threads + id;
-    barrier();
-    w[i].timing = rdtsc();
-    barrier();
+      w[i].idx = i * threads + id;
+      barrier();
+      w[i].timing = rdtsc();
+      barrier();
 
-    MemcachedHdr *hdr = reinterpret_cast<MemcachedHdr *>(w[i].req);
-    hdr->opaque = htonl(i * threads + id);
+      MemcachedHdr *hdr = reinterpret_cast<MemcachedHdr *>(w[i].req);
+      hdr->opaque = htonl(i * threads + id);
 
-    // Send an RPC request.
-    ssize_t ret = TcpWriteFull(c, w[i].req, w[i].req_len);
+      // Send an RPC request.
+      ssize_t ret = TcpWriteFull(c, w[i].req, w[i].req_len);
+      if (ret >= 0) {
+          printf("Request id %d sent successfully\n", i);
+      } else {
+          printf("Failed to send request id %d\n", i);
+      }
   }
   printf("Finished sending requests\n");
-
-  __time_delay_us(1000);
-  //usleep(kRTT + 2);
-  shutdown(c, SHUT_RDWR);
-  close(c);
-  th.join();
-  printf("Listener thread joined\n");
-
-  return w;
-}
 
 std::vector<work_unit> RunExperiment(
     int threads, struct cstat_raw *csr, double *elapsed,

@@ -542,6 +542,7 @@ std::vector<work_unit> ClientWorker(
       }
   }
   printf("Finished sending requests\n");
+}
 
 std::vector<work_unit> RunExperiment(
     int threads, struct cstat_raw *csr, double *elapsed,

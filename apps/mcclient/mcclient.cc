@@ -141,6 +141,8 @@ int TcpListen(uint16_t port, int backlog) {
     return -1;
   }
 
+  std::cout << "Listening on port " << port << std::endl;
+
   return fd;
 }
 
@@ -157,6 +159,8 @@ int TcpAccept(int fd, uint16_t port) {
     fprintf(stderr, "Failed to accept\n");
     return -1;
   }
+
+  std::cout << "Accepted connection on port " << port << std::endl;
 
   return s;
 }
@@ -179,6 +183,8 @@ int TcpDial(unsigned long ip, uint16_t port) {
     fprintf(stderr, "Failed to connect: port = %u\n", port);
     return -1;
   }
+
+  std::cout << "Connected to server at " << inet_ntoa(addr.sin_addr) << " on port " << port << std::endl;
 
   return fd;
 }
@@ -720,7 +726,7 @@ void PrintStatResults(std::vector<work_unit> w, struct cstat *cs) {
 
   double sum = std::accumulate(
       w.begin(), w.end(), 0.0,
-      [](double s, const work_unit &c) { return s + c.duration_us; });
+      [](double s, the work_unit &c) { return s + c.duration_us; });
   double mean = sum / w.size();
   double p50 = w[count * 0.5].duration_us;
   double p90 = w[count * 0.1].duration_us;

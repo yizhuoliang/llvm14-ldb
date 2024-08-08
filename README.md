@@ -10,8 +10,9 @@
 2. Compile LLVM
   * ``llvm14-ldb> mkdir build``
   * ``llvm14-ldb> cd build``
-  * ``llvm14-ldb/build> cmake -DLLVM_TARGETS_TO_BUILD=X86 -DLLVM_TARGET_ARCH=X86 -DCMAKE_BUILD_TYPE="Release" -DLLVM_BUILD_EXAMPLES=1 -DLLVM_INCLUDE_EXAMPLES=1 -DLLVM_ENABLE_PROJECTS="clang" -G "Unix Makefiles" ../llvm``
-  * ``llvm14-ldb/build> cmake --build . -j``
+  * ``cmake -DLLVM_TARGETS_TO_BUILD=X86 -DLLVM_TARGET_ARCH=X86 -DCMAKE_BUILD_TYPE="Release" \
+  -DLLVM_BUILD_EXAMPLES=1 -DLLVM_INCLUDE_EXAMPLES=1 \ -DLLVM_ENABLE_PROJECTS="clang;libcxx;libcxxabi" -G "Unix Makefiles" ../llvm``
+  * ``llvm14-ldb/build> cmake --build . -j$(nproc)``
 
 3. Compile LDB library
   * ``llvm14-ldb/build> cd ../libldb``
@@ -32,6 +33,7 @@
 
 ### Parsing the data
 The raw data is in ldb.data (by LDB) and perf.data (by perf).
+``pip3 install pyelftools==0.29``
 1. Parsing latency distribution for each function (this will only use LDB data)
   * ``llvm14-ldb/apps/demo> python3 ../../scripts/parse_summary.py demo > summary``
 

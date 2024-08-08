@@ -542,6 +542,15 @@ std::vector<work_unit> ClientWorker(
       }
   }
   printf("Finished sending requests\n");
+  
+  __time_delay_us(1000);
+  //usleep(kRTT + 2);
+  shutdown(c, SHUT_RDWR);
+  close(c);
+  th.join();
+  printf("Listener thread joined\n");
+
+  return w;
 }
 
 std::vector<work_unit> RunExperiment(

@@ -726,7 +726,7 @@ void PrintStatResults(std::vector<work_unit> w, struct cstat *cs) {
 
   double sum = std::accumulate(
       w.begin(), w.end(), 0.0,
-      [](double s, the work_unit &c) { return s + c.duration_us; });
+      [](double s, const work_unit &c) { return s + c.duration_us; });
   double mean = sum / w.size();
   double p50 = w[count * 0.5].duration_us;
   double p90 = w[count * 0.1].duration_us;

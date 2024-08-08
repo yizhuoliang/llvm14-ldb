@@ -469,14 +469,22 @@ std::vector<work_unit> ClientWorker(
     uint64_t now;
     uint32_t idx;
 
+    std::cout << "Receiver thread started" << std::endl;
+
     while (true) {
       ret = TcpReadFull(c, resp, sizeof(MemcachedHdr));
-      if (ret < 0) break;
+      if (ret < 0) {
+        std::cerr << "Failed to read header" << std::endl;
+        break;
+      }
       hdr = reinterpret_cast<struct MemcachedHdr *>(resp);
       ntoh(hdr);
 
       ret = TcpReadFull(c, resp + sizeof(MemcachedHdr), hdr->total_body_length);
-      if (ret < 0) break;
+      if (ret < 0) {
+        std::cerr << "Failed to read body" << std::endl;
+        break;
+      }
 
       barrier();
       now = rdtsc();
@@ -486,8 +494,11 @@ std::vector<work_unit> ClientWorker(
 
       w[idx].duration_us = 1.0 * (now - w[idx].timing) / CYCLES_PER_US;
       w[idx].success = true;
+
+      std::cout << "Received response for request id: " << idx << std::endl;
     }
   });
+
 
   // Synchronized start of load generation.
   starter->Done();

@@ -165,7 +165,7 @@ void *monitor_main(void *arg) {
   // Pin to core 0
   cpu_set_t cpuset;
   CPU_ZERO(&cpuset);
-  CPU_SET(0, &cpuset);
+  CPU_SET(27, &cpuset);
   pthread_setaffinity_np(pthread_self(), sizeof(cpuset), &cpuset);
 
   // allocate per-thread memory

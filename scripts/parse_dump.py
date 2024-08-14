@@ -199,8 +199,12 @@ def extract_func_desc(line):
     i = min(i, len(line) - 1)
     return line[:i+1]
 
+non_existent_paths = set()
 def func_read(file_path, nline, ncol):
     if not os.path.exists(file_path):
+        if file_path not in non_existent_paths:
+            non_existent_paths.add(file_path)
+            print(f"File not found: {file_path}")
         return "???"
 
     with open(file_path, "r") as f:

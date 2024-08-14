@@ -249,7 +249,7 @@ DocumentPtr createDocument(const String& contents) {
     try {
         document->add(newLucene<Field>(L"contents", contents, Field::STORE_YES, Field::INDEX_ANALYZED));
     } catch (const LuceneException& e) {
-        std::cerr << "Lucene exception in document field addition: " << e.getError() << std::endl;
+        std::cerr << "Lucene exception in document field addition" << std::endl;
         return nullptr;
     } catch (const std::exception& e) {
         std::cerr << "Standard exception in document field addition: " << e.what() << std::endl;
@@ -312,7 +312,7 @@ void PopulateIndex() {
             indexWriter->addDocument(document);
             num_docs++;
         } catch (const LuceneException& e) {
-            std::cerr << "Lucene exception when adding document: " << e.getError() << std::endl;
+            std::cerr << "Lucene exception when adding document" << std::endl;
         } catch (const std::exception& e) {
             std::cerr << "Exception when adding document: " << e.what() << std::endl;
         }
@@ -323,7 +323,7 @@ void PopulateIndex() {
         indexWriter->optimize();
         indexWriter->close();
     } catch (const LuceneException& e) {
-        std::cerr << "Lucene exception during optimization or closing: " << e.getError() << std::endl;
+        std::cerr << "Lucene exception during optimization or closing" << std::endl;
     } catch (const std::exception& e) {
         std::cerr << "Exception during optimization or closing: " << e.what() << std::endl;
     }

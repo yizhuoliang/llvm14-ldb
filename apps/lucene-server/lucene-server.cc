@@ -231,37 +231,42 @@ DocumentPtr createDocument(const String& contents) {
 }
 
 void PopulateIndex() {
-  std::cout << "Populating indices ...\t" << std::flush;
-  uint64_t start = rdtsc();
-  int num_docs = 0;
-  dir = newLucene<RAMDirectory>();
+    std::cout << "Populating indices ...\t" << std::flush;
+    uint64_t start = rdtsc();
+    int num_docs = 0;
+    dir = newLucene<RAMDirectory>();
 
-  IndexWriterPtr indexWriter = newLucene<IndexWriter>(dir,
-      newLucene<StandardAnalyzer>(LuceneVersion::LUCENE_CURRENT), true,
-      IndexWriter::MaxFieldLengthLIMITED);
+    IndexWriterPtr indexWriter = newLucene<IndexWriter>(dir,
+        newLucene<StandardAnalyzer>(LuceneVersion::LUCENE_CURRENT), true,
+        IndexWriter::MaxFieldLengthLIMITED);
 
-  std::string line;
-  String wline;
-  std::ifstream tweet_txt("2021-11-27-dataset-text.tsv");
+    std::ifstream csvFile("test.csv");
+    std::string line;
 
-  if (!tweet_txt.is_open()) {
-    std::cout << "Unable to open file" << std::endl;
-    return;
-  }
+    if (!csvFile.is_open()) {
+        std::cout << "Unable to open file" << std::endl;
+        return;
+    }
 
-  while (getline(tweet_txt, line)) {
-    wline = String(line.length(), L' ');
-    std::copy(line.begin(), line.end(), wline.begin());
-    indexWriter->addDocument(createDocument(wline));
-    num_docs++;
-  }
-  tweet_txt.close();
+    while (getline(csvFile, line)) {
+        std::stringstream ss(line);
+        std::string polarity, title, review;
+        getline(ss, polarity, ',');
+        getline(ss, title, ',');
+        getline(ss, review, ',');
 
-  indexWriter->optimize();
-  indexWriter->close();
-  uint64_t finish = rdtsc();
-  std::cout << "Done: " << num_docs << " documents ("
-    << (finish - start) / CYCLES_PER_US / 1000000.0 << " s)" << std::endl;
+        String wreview = String(review.length(), L' ');
+        std::copy(review.begin(), review.end(), wreview.begin());
+        indexWriter->addDocument(createDocument(wreview));
+        num_docs++;
+    }
+    csvFile.close();
+
+    indexWriter->optimize();
+    indexWriter->close();
+    uint64_t finish = rdtsc();
+    std::cout << "Done: " << num_docs << " documents ("
+        << (finish - start) / CYCLES_PER_US / 1000000.0 << " s)" << std::endl;
 }
 
 void *luceneWorker(void *arg) {

@@ -283,7 +283,10 @@ void PopulateIndex() {
     }
 
     std::string line;
+    int iteration = 0; // Counter for iterations
     while (getline(csvFile, line)) {
+        std::cout << "Processing iteration #" << iteration++ << std::endl; // Print the current iteration number
+
         std::stringstream ss(line);
         std::string polarity, title, review;
         getline(ss, polarity, ',');

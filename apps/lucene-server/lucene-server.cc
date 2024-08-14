@@ -234,6 +234,21 @@ void ReadFreqTerms() {
     std::cout << "Done" << std::endl;
 }
 
+std::string sanitizeString(const std::string& input) {
+    std::string result;
+    for (char c : input) {
+        // Check if the character should be kept
+        if ((c >= 'a' && c <= 'z') || // lowercase letters
+            (c >= 'A' && c <= 'Z') || // uppercase letters
+            (c == ' ') ||             // space
+            (c == ',') ||             // comma
+            (c == '.')) {             // period
+            result += c;
+        }
+    }
+    return result;
+}
+
 DocumentPtr createDocument(const String& contents) {
     if (contents.empty()) {
         std::cerr << "Empty contents received for document creation." << std::endl;
@@ -296,6 +311,7 @@ void PopulateIndex() {
         getline(ss, polarity, ',');
         getline(ss, title, ',');
         getline(ss, review, ',');
+        review = sanitizeString(review);
 
         if (review.empty()) {
             std::cerr << "Empty review found at line: " << line << std::endl;

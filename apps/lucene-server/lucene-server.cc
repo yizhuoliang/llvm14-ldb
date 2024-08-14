@@ -287,6 +287,10 @@ void PopulateIndex() {
     while (getline(csvFile, line)) {
         std::cout << "Processing iteration #" << iteration++ << std::endl; // Print the current iteration number
 
+        if (iteration == 4811) {
+            std::cerr << "Reached critical iteration #" << iteration << std::endl;
+        }
+
         std::stringstream ss(line);
         std::string polarity, title, review;
         getline(ss, polarity, ',');

@@ -6,8 +6,6 @@
 #include <sstream>
 #include <string>
 #include <pthread.h>
-#include <codecvt>
-#include <locale>
 #include "LuceneHeaders.h"
 #include "Document.h"
 #include "Field.h"
@@ -236,15 +234,10 @@ void ReadFreqTerms() {
     std::cout << "Done" << std::endl;
 }
 
-std::string toNarrowString(const Lucene::String& wideString) {
-    std::wstring_convert<std::codecvt_utf8<wchar_t>> converter;
-    return converter.to_bytes(wideString);
-}
-
 DocumentPtr createDocument(const String& contents) {
     if (contents.empty()) {
         std::cerr << "Empty contents received for document creation." << std::endl;
-        return nullptr;
+        return nullptr;  // Return nullptr if contents are empty to prevent creating empty documents.
     }
     
     DocumentPtr document = newLucene<Document>();
@@ -311,7 +304,7 @@ void PopulateIndex() {
 
         DocumentPtr document = createDocument(wreview);
         if (!document) {
-            std::cerr << "Document creation failed for review: " << toNarrowString(wreview) << std::endl;
+            std::cerr << "Document creation failed for review: " << review << std::endl;
             continue;
         }
 

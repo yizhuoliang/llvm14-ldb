@@ -235,10 +235,28 @@ void ReadFreqTerms() {
 }
 
 DocumentPtr createDocument(const String& contents) {
-  DocumentPtr document = newLucene<Document>();
-  document->add(newLucene<Field>(L"contents", contents, Field::STORE_YES,
-        Field::INDEX_ANALYZED));
-  return document;
+    if (contents.empty()) {
+        std::cerr << "Empty contents received for document creation." << std::endl;
+        return nullptr;  // Return nullptr if contents are empty to prevent creating empty documents.
+    }
+    
+    DocumentPtr document = newLucene<Document>();
+    if (!document) {
+        std::cerr << "Failed to create a new document instance." << std::endl;
+        return nullptr;
+    }
+    
+    try {
+        document->add(newLucene<Field>(L"contents", contents, Field::STORE_YES, Field::INDEX_ANALYZED));
+    } catch (const LuceneException& e) {
+        std::cerr << "Lucene exception in document field addition: " << e.getError() << std::endl;
+        return nullptr;
+    } catch (const std::exception& e) {
+        std::cerr << "Standard exception in document field addition: " << e.what() << std::endl;
+        return nullptr;
+    }
+
+    return document;
 }
 
 void PopulateIndex() {
@@ -246,23 +264,18 @@ void PopulateIndex() {
     uint64_t start = rdtsc();
     int num_docs = 0;
 
-    // Initialize the directory and check for null pointer
     dir = newLucene<RAMDirectory>();
     if (!dir) {
         std::cerr << "Failed to create RAMDirectory instance." << std::endl;
         return;
     }
 
-    // Initialize the index writer and check for null pointer
-    IndexWriterPtr indexWriter = newLucene<IndexWriter>(dir,
-        newLucene<StandardAnalyzer>(LuceneVersion::LUCENE_CURRENT), true,
-        IndexWriter::MaxFieldLengthLIMITED);
+    IndexWriterPtr indexWriter = newLucene<IndexWriter>(dir, newLucene<StandardAnalyzer>(LuceneVersion::LUCENE_CURRENT), true, IndexWriter::MaxFieldLengthLIMITED);
     if (!indexWriter) {
         std::cerr << "Failed to create IndexWriter instance." << std::endl;
         return;
     }
 
-    // Open the CSV file
     std::ifstream csvFile("test.csv");
     if (!csvFile.is_open()) {
         std::cerr << "Unable to open file" << std::endl;
@@ -273,27 +286,35 @@ void PopulateIndex() {
     while (getline(csvFile, line)) {
         std::stringstream ss(line);
         std::string polarity, title, review;
+        getline(ss, polarity, ',');
+        getline(ss, title, ',');
+        getline(ss, review, ',');
 
-        if (!getline(ss, polarity, ',')) {
-            std::cerr << "Failed to read polarity from line: " << line << std::endl;
+        if (review.empty()) {
+            std::cerr << "Empty review found at line: " << line << std::endl;
             continue;
         }
-        if (!getline(ss, title, ',')) {
-            std::cerr << "Failed to read title from line: " << line << std::endl;
+
+        String wreview = String(review.length(), L' ');
+        std::copy(review.begin(), review.end(), wreview.begin());
+        if (wreview.empty()) {
+            std::cerr << "Conversion to wide string resulted in empty string for review: " << review << std::endl;
             continue;
         }
-        if (!getline(ss, review, ',')) {
-            std::cerr << "Failed to read review from line: " << line << std::endl;
+
+        DocumentPtr document = createDocument(wreview);
+        if (!document) {
+            std::cerr << "Document creation failed for review: " << review << std::endl;
             continue;
         }
 
         try {
-            String wreview = String(review.length(), L' ');
-            std::copy(review.begin(), review.end(), wreview.begin());
-            indexWriter->addDocument(createDocument(wreview));
+            indexWriter->addDocument(document);
             num_docs++;
-        } catch (std::exception& e) {
-            std::cerr << "Exception occurred while adding document: " << e.what() << std::endl;
+        } catch (const LuceneException& e) {
+            std::cerr << "Lucene exception when adding document: " << e.getError() << std::endl;
+        } catch (const std::exception& e) {
+            std::cerr << "Exception when adding document: " << e.what() << std::endl;
         }
     }
     csvFile.close();
@@ -301,8 +322,10 @@ void PopulateIndex() {
     try {
         indexWriter->optimize();
         indexWriter->close();
-    } catch (std::exception& e) {
-        std::cerr << "Exception occurred during index optimization or closing: " << e.what() << std::endl;
+    } catch (const LuceneException& e) {
+        std::cerr << "Lucene exception during optimization or closing: " << e.getError() << std::endl;
+    } catch (const std::exception& e) {
+        std::cerr << "Exception during optimization or closing: " << e.what() << std::endl;
     }
 
     uint64_t finish = rdtsc();

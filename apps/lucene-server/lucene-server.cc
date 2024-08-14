@@ -300,10 +300,9 @@ void PopulateIndex() {
     std::string line;
     int iteration = 0; // Counter for iterations
     while (getline(csvFile, line)) {
-        std::cout << "Processing iteration #" << iteration++ << std::endl; // Print the current iteration number
-
-        if (iteration == 4811) {
-            std::cerr << "Reached critical iteration #" << iteration << std::endl;
+        iteration++;
+        if (iteration % 1000 == 0) {
+            std::cerr << "Processing line #" << iteration << std::endl;
         }
 
         std::stringstream ss(line);

@@ -313,7 +313,7 @@ void PopulateIndex() {
         review = sanitizeString(review);
 
         if (review.empty()) {
-            std::cerr << "Empty review found at line: " << line << std::endl;
+            // std::cerr << "Empty review found at line: " << line << std::endl;
             continue;
         }
 

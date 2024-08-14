@@ -196,31 +196,40 @@ String ChooseTerm(uint64_t hash) {
 }
 
 void ReadFreqTerms() {
-  std::cout << "Reading csv ...\t" << std::flush;
-  std::ifstream fin("frequent_terms.csv");
+    std::cout << "Reading csv ...\t" << std::flush;
+    std::ifstream fin("frequent_terms.csv");
 
-  std::string line, word;
-  String wword;
-  uint64_t freq;
+    std::string line, word;
+    String wword;
+    uint64_t freq;
 
-  weight_sum = 0;
+    weight_sum = 0;
 
-  while(std::getline(fin, line)) {
-    std::stringstream ss(line);
+    while(std::getline(fin, line)) {
+        std::stringstream ss(line);
 
-    getline(ss, word, ',');
-    wword = String(word.length(), L' ');
-    std::copy(word.begin(), word.end(), wword.begin());
-    terms.push_back(wword);
+        getline(ss, word, ',');
+        wword = String(word.length(), L' ');
+        std::copy(word.begin(), word.end(), wword.begin());
+        terms.push_back(wword);
 
-    getline(ss, word, ',');
-    freq = std::stoi(word) / NORM;
-    frequencies.push_back(freq);
-    weight_sum += freq;
-  }
+        getline(ss, word, ',');
 
-  fin.close();
-  std::cout << "Done" << std::endl;
+        try {
+            freq = std::stoi(word) / NORM;
+            frequencies.push_back(freq);
+            weight_sum += freq;
+        } catch (const std::invalid_argument& e) {
+            std::cerr << "Invalid argument: " << word << " in line: " << line << std::endl;
+            // Optionally, handle the error, e.g., skip this entry or set freq to a default value
+        } catch (const std::out_of_range& e) {
+            std::cerr << "Out of range: " << word << " in line: " << line << std::endl;
+            // Handle out of range error
+        }
+    }
+
+    fin.close();
+    std::cout << "Done" << std::endl;
 }
 
 DocumentPtr createDocument(const String& contents) {

@@ -2,6 +2,8 @@
 #include <stdlib.h>
 #include <time.h>
 #include <iostream>
+#include <fstream>
+#include <sstream>
 #include <string>
 #include <pthread.h>
 #include "LuceneHeaders.h"
@@ -243,39 +245,69 @@ void PopulateIndex() {
     std::cout << "Populating indices ...\t" << std::flush;
     uint64_t start = rdtsc();
     int num_docs = 0;
+
+    // Initialize the directory and check for null pointer
     dir = newLucene<RAMDirectory>();
-
-    IndexWriterPtr indexWriter = newLucene<IndexWriter>(dir,
-        newLucene<StandardAnalyzer>(LuceneVersion::LUCENE_CURRENT), true,
-        IndexWriter::MaxFieldLengthLIMITED);
-
-    std::ifstream csvFile("test.csv");
-    std::string line;
-
-    if (!csvFile.is_open()) {
-        std::cout << "Unable to open file" << std::endl;
+    if (!dir) {
+        std::cerr << "Failed to create RAMDirectory instance." << std::endl;
         return;
     }
 
+    // Initialize the index writer and check for null pointer
+    IndexWriterPtr indexWriter = newLucene<IndexWriter>(dir,
+        newLucene<StandardAnalyzer>(LuceneVersion::LUCENE_CURRENT), true,
+        IndexWriter::MaxFieldLengthLIMITED);
+    if (!indexWriter) {
+        std::cerr << "Failed to create IndexWriter instance." << std::endl;
+        return;
+    }
+
+    // Open the CSV file
+    std::ifstream csvFile("test.csv");
+    if (!csvFile.is_open()) {
+        std::cerr << "Unable to open file" << std::endl;
+        return;
+    }
+
+    std::string line;
     while (getline(csvFile, line)) {
         std::stringstream ss(line);
         std::string polarity, title, review;
-        getline(ss, polarity, ',');
-        getline(ss, title, ',');
-        getline(ss, review, ',');
 
-        String wreview = String(review.length(), L' ');
-        std::copy(review.begin(), review.end(), wreview.begin());
-        indexWriter->addDocument(createDocument(wreview));
-        num_docs++;
+        if (!getline(ss, polarity, ',')) {
+            std::cerr << "Failed to read polarity from line: " << line << std::endl;
+            continue;
+        }
+        if (!getline(ss, title, ',')) {
+            std::cerr << "Failed to read title from line: " << line << std::endl;
+            continue;
+        }
+        if (!getline(ss, review, ',')) {
+            std::cerr << "Failed to read review from line: " << line << std::endl;
+            continue;
+        }
+
+        try {
+            String wreview = String(review.length(), L' ');
+            std::copy(review.begin(), review.end(), wreview.begin());
+            indexWriter->addDocument(createDocument(wreview));
+            num_docs++;
+        } catch (std::exception& e) {
+            std::cerr << "Exception occurred while adding document: " << e.what() << std::endl;
+        }
     }
     csvFile.close();
 
-    indexWriter->optimize();
-    indexWriter->close();
+    try {
+        indexWriter->optimize();
+        indexWriter->close();
+    } catch (std::exception& e) {
+        std::cerr << "Exception occurred during index optimization or closing: " << e.what() << std::endl;
+    }
+
     uint64_t finish = rdtsc();
     std::cout << "Done: " << num_docs << " documents ("
-        << (finish - start) / CYCLES_PER_US / 1000000.0 << " s)" << std::endl;
+              << (finish - start) / CYCLES_PER_US / 1000000.0 << " s)" << std::endl;
 }
 
 void *luceneWorker(void *arg) {

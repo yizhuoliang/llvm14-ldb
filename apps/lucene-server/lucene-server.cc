@@ -19,7 +19,8 @@
 
 extern "C" {
 #include "ldb/tag.h"
-//#include "ldb/logger.h"
+#include "ldb/logger.h"
+#include "hrperf_api.h"
 }
 
 #define likely(x)       __builtin_expect((x),1)
@@ -407,6 +408,8 @@ int main(int argc, char *argv[]) {
   ReadFreqTerms();
   PopulateIndex();
 
-//  logger_reset();
+  logger_reset();
+  hrperf_start();
   runServer();
+  hrperf_pause();
 }

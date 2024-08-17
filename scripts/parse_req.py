@@ -202,7 +202,7 @@ def extract_func_desc(line):
 
 def func_read(file_path, nline, ncol):
     if not os.path.exists(file_path):
-        return "???"
+        file_path = "/llvm14-ldb/apps/LucenePlusPlus" + file_path[2:]
 
     with open(file_path, "r") as f:
         for i, line in enumerate(f):

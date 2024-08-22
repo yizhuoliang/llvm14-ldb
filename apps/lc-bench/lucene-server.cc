@@ -434,6 +434,7 @@ int main(int argc, char *argv[]) {
   PopulateIndex();
 
   logger_reset();
+  sleep(1); // avoid the async reset eatting my new stack samplings
   hrperf_start();
   runServer(n_threads);
   hrperf_pause();

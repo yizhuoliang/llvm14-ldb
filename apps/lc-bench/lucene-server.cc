@@ -401,18 +401,15 @@ void *luceneWorker(void *arg) {
     return nullptr;
 }
 
-void runServer() {
-    std::string directory = "./loads";
+void runServer(int n_threads) {
     std::vector<pthread_t> threads;
+    threads.reserve(n_threads);  // Reserve space for the thread handles
 
-    for (const auto& entry : std::filesystem::directory_iterator(directory)) {
-        if (entry.path().extension() == ".bin") {
-            int worker_id = std::stoi(entry.path().stem());  // Assuming filenames are just IDs
-            pthread_t worker_th;
-            int* arg = new int(worker_id);  // Allocate memory for the worker_id
-            pthread_create(&worker_th, NULL, &luceneWorker, (void*)arg);
-            threads.push_back(worker_th);
-        }
+    for (int i = 0; i < n_threads; ++i) {
+        pthread_t worker_th;
+        int* arg = new int(i);  // Allocate memory for the worker ID
+        pthread_create(&worker_th, NULL, &luceneWorker, (void*)arg);
+        threads.push_back(worker_th);
     }
 
     // Wait for all threads to complete
@@ -424,6 +421,13 @@ void runServer() {
 }
 
 int main(int argc, char *argv[]) {
+  if (argc < 2) {
+      std::cerr << "Usage: " << argv[0] << " <number_of_threads>\n";
+      return 1;
+  }
+
+  int n_threads = std::stoi(argv[1]);
+
   srand(time(NULL));
   
   ReadFreqTerms();
@@ -431,6 +435,6 @@ int main(int argc, char *argv[]) {
 
   logger_reset();
   hrperf_start();
-  runServer();
+  runServer(n_threads);
   hrperf_pause();
 }

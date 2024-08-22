@@ -405,6 +405,11 @@ std::vector<work_unit> ClientWorker(int c, int id, WaitGroup *starter, WaitGroup
     return w;
   }
 
+  // asign unique query IDs
+  for (unsigned int i = 0; i < w.size(); ++i) {
+    w[i].idx = i * threads + id;
+  }
+
   for (const auto& unit : w) {
     payload p;
     p.term_index = unit.term_index;

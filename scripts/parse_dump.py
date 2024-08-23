@@ -264,7 +264,7 @@ def parse_ldb(executable):
             event_type = int.from_bytes(byte[0:4], "little")
             ts_sec = int.from_bytes(byte[4:8], "little")
             ts_nsec = int.from_bytes(byte[8:12], "little")
-            timestamp_us = ts_sec * 1000000 + ts_nsec / 1000.0
+            timestamp_us = ts_sec * 1000000000 + ts_nsec
             tid = int.from_bytes(byte[12:16], "little")
             arg1 = int.from_bytes(byte[16:24], "little")
             arg2 = int.from_bytes(byte[24:32], "little")
@@ -484,7 +484,7 @@ def generate_stats(executable):
         if last_tsc != e['tsc']:
             print("---")
             last_tsc = e['tsc']
-        print("{:.3f} ({:.3f}) [{:d}] {} {}"
+        print("{:d} ({:d}) [{:d}] {} {}"
               .format(e['tsc'], e['tsc'] - min_tsc, e['thread_idx'], e['event'], e['detail']))
 
 

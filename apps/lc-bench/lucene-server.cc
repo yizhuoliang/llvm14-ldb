@@ -387,12 +387,12 @@ void *luceneWorker(void *arg) {
 
     // Perform the search work
     for (const auto& rp : payloads) {
-        ldb_tag_set(rp.index);
         uint64_t term_index = rp.term_index;
         uint64_t index = rp.index;
-
-        QueryPtr query = newLucene<TermQuery>(newLucene<Term>(L"contents", StringUtils::toUnicode(std::to_string(term_index))));
-        Collection<ScoreDocPtr> hits = searcher->search(query, FilterPtr(), 10)->scoreDocs;
+        ldb_tag_set(rp.index);
+        QueryPtr query = newLucene<TermQuery>(newLucene<Term>(L"contents",
+          terms[term_index]));
+        Collection<ScoreDocPtr> hits = searcher->search(query, FilterPtr(), searchN)->scoreDocs;
         ldb_tag_clear();
     }
 

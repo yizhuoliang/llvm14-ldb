@@ -478,7 +478,7 @@ def generate_stats(executable):
 
     print("executable: {}".format(executable))
 
-    if len(all_events > 0):
+    if len(all_events) > 0:
         last_tsc = all_events[0]['tsc']
     for e in all_events:
         if last_tsc != e['tsc']:

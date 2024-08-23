@@ -483,6 +483,7 @@ def generate_stats(executable):
     for e in all_events:
         if last_tsc != e['tsc']:
             print("---")
+            last_tsc = e['tsc']
         print("{:.3f} ({:.3f}) [{:d}] {} {}"
               .format(e['tsc'], e['tsc'] - min_tsc, e['thread_idx'], e['event'], e['detail']))
 

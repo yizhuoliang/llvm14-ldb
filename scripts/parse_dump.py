@@ -478,10 +478,13 @@ def generate_stats(executable):
 
     print("executable: {}".format(executable))
 
+    if len(all_events > 0):
+        last_tsc = all_events[0]['tsc']
     for e in all_events:
+        if last_tsc != e['tsc']:
+            print("---")
         print("{:.3f} ({:.3f}) [{:d}] {} {}"
               .format(e['tsc'], e['tsc'] - min_tsc, e['thread_idx'], e['event'], e['detail']))
-        print("---")
 
 
 if __name__ == '__main__':

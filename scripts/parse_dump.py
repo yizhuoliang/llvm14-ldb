@@ -199,9 +199,10 @@ def extract_func_desc(line):
     i = min(i, len(line) - 1)
     return line[:i+1]
 
-def func_read(file_path, nline, ncol):
+# manual_dir_path since the file_path parsed from elf is sometimes unreliable
+def func_read(file_path, nline, ncol, source_dir_path):
     if not os.path.exists(file_path):
-        file_path = "/llvm14-ldb/apps/LucenePlusPlus" + file_path[2:]
+        file_path = source_dir_path + file_path[2:]
 
     with open(file_path, "r") as f:
         for i, line in enumerate(f):
@@ -210,7 +211,7 @@ def func_read(file_path, nline, ncol):
 
     return "???"
 
-def get_finfos(dwarfinfo, mapsinfo, addresses):
+def get_finfos(dwarfinfo, mapsinfo, addresses, source_dir_path):
     # remove duplicates
     addresses = list(set(addresses))
     addresses.sort()
@@ -229,7 +230,8 @@ def get_finfos(dwarfinfo, mapsinfo, addresses):
 
     for key in ret:
         func_desc = func_read(bytes2str(ret[key]['dir']) + "/" + bytes2str(ret[key]['fname']),
-                ret[key]['line'], ret[key]['col'])
+                ret[key]['line'], ret[key]['col'],
+                source_dir_path)
         finfomap[key] = "{} ({}:{:d}:{:d})"\
                 .format(func_desc, bytes2str(ret[key]['fname']),
                         ret[key]['line'], ret[key]['col'])
@@ -242,7 +244,7 @@ def get_finfos(dwarfinfo, mapsinfo, addresses):
 
     return finfomap
 
-def parse_ldb(executable):
+def parse_ldb(executable, source_dir_path):
 #    print('LDB Data: {}'.format(LDB_DATA_FILENAME))
     dwarfinfo = parse_elf(executable)
     mapsinfo = parse_maps()
@@ -395,7 +397,7 @@ def parse_ldb(executable):
     finfomap = {}
     # parse pcs
     if len(pcs) > 0:
-        finfomap = get_finfos(dwarfinfo, mapsinfo, pcs)
+        finfomap = get_finfos(dwarfinfo, mapsinfo, pcs, source_dir_path)
 
     # update event detail
     for e in my_events:
@@ -464,8 +466,8 @@ def parse_perf(thread_list, min_tsc, max_tsc):
                 'detail': "cpu_id={:d}, {}".format(cpu_id, bpf_output)})
     return row_in_time
 
-def generate_stats(executable):
-    my_events, my_threads, wait_lock_time, min_tsc, max_tsc = parse_ldb(executable)
+def generate_stats(executable, source_dir_path):
+    my_events, my_threads, wait_lock_time, min_tsc, max_tsc = parse_ldb(executable, source_dir_path)
     sched_events = parse_perf(my_threads, min_tsc, max_tsc)
 
     print(min_tsc, max_tsc)
@@ -489,7 +491,7 @@ def generate_stats(executable):
 
 
 if __name__ == '__main__':
-    if len(sys.argv) != 2:
-        print('Expected usage: {0} <executable>'.format(sys.argv[0]))
+    if len(sys.argv) != 3:
+        print('Expected usage: {0} <executable> <source_dir_path>'.format(sys.argv[0]))
         sys.exit(1)
-    generate_stats(sys.argv[1])
+    generate_stats(sys.argv[1], sys.argv[2])

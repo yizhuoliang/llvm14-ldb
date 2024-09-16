@@ -45,6 +45,7 @@ struct thread {
   struct stack_sample samples[LDB_MAX_CALLDEPTH];
 };
 
+// So the sarr is from the deepest to the callers above
 static int scan_stack(struct thread *th, uint64_t *rbp, struct stack_sample *sarr) {
   uint64_t *top = rbp - 1;
   int frames = 0;
@@ -165,7 +166,7 @@ void *monitor_main(void *arg) {
   // Pin to core 0
   cpu_set_t cpuset;
   CPU_ZERO(&cpuset);
-  CPU_SET(27, &cpuset);
+  CPU_SET(0, &cpuset);
   pthread_setaffinity_np(pthread_self(), sizeof(cpuset), &cpuset);
 
   // allocate per-thread memory

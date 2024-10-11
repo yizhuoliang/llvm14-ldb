@@ -40,7 +40,7 @@ struct thread {
   int cnt;
   uint64_t last_gen;
   uint64_t *stack_base;
-  struct timespec last_ts; 
+  struct timespec last_ts;
   struct tls_shared_region *tls;
   struct stack_sample samples[LDB_MAX_CALLDEPTH];
 };
@@ -50,20 +50,32 @@ static int scan_stack(struct thread *th, uint64_t *rbp, struct stack_sample *sar
   int frames = 0;
 
   // Heuristic: If start rbp is not valid, skip this iteration
-  if (rbp <= (uint64_t *)0x7f0000000000 || rbp > th->stack_base)
+  if (rbp > th->stack_base) {
+    // printf("scan_stack: Invalid starting RBP %p for thread %d, unwind start rbp: %p\n", rbp, th->thread_id, th->stack_base);
     return -1;
+  }
 
-  while (rbp) {
-    // check for invalid base pointers
-    if (rbp <= top || rbp > th->stack_base) {
-      return -1; 
+  while (true) {
+    // Check if we've reached the initial RBP
+    if (rbp == th->stack_base) {
+      // printf("scan_stack: Reached initial RBP %p for thread %d\n", rbp, th->thread_id);
+      break; // Reached the base of the stack
+    }
+
+    // Check for invalid base pointers
+    if (rbp <= top || rbp > th->stack_base || rbp == NULL) {
+      // printf("scan_stack: Invalid RBP %p encountered for thread %d\n", rbp, th->thread_id);
+      return -1;
     }
 
     uint64_t canary_and_tag = *(rbp + 1);
     uint32_t canary = (uint32_t)(canary_and_tag >> 32);
     if (canary != LDB_CANARY) {
+      // printf("scan_stack: Canary mismatch at RBP %p for thread %d, expected %x, found %x\n",
+      //        rbp, th->thread_id, LDB_CANARY, canary);
       return -1;
     }
+
     sarr->gen = *(rbp + 2);
     sarr->rip = *(rbp + 3);
     sarr->rbp = (uint64_t)rbp;
@@ -71,7 +83,7 @@ static int scan_stack(struct thread *th, uint64_t *rbp, struct stack_sample *sar
     frames++;
 
     if (frames > LDB_MAX_CALLDEPTH) {
-      printf("[WARNING] max call depth exceeded\n");
+      printf("[WARNING] max call depth exceeded for thread %d\n", th->thread_id);
       return -1;
     }
 
@@ -112,6 +124,7 @@ static void scan_thread(struct thread *th) {
   // Skip if a modification wasn't detected (to avoid probe effects)
   uint64_t gen = ACCESS_ONCE(th->tls->gen);
   uint64_t rbp = ACCESS_ONCE(th->tls->rbp);
+
   if (gen == th->last_gen) {
     return;
   }
@@ -121,9 +134,12 @@ static void scan_thread(struct thread *th) {
 
   // Scan the stack and gather frames 
   frames = scan_stack(th, (uint64_t *)rbp, tmp);
+
   uint64_t end_gen = ACCESS_ONCE(th->tls->gen);
   uint64_t end_rbp = ACCESS_ONCE(th->tls->rbp);
+
   if (frames < 0 || end_gen != gen || end_rbp != rbp) {
+    // printf("scan_thread: Stack scan failed or inconsistent gen-num for thread %d\n", th->thread_id);
     if (!th->last_ts_set) {
       th->last_ts_set = true;
       th->last_ts = now;
@@ -140,8 +156,6 @@ static void scan_thread(struct thread *th) {
 
   // Store frames (in reverse so top is first) for next comparison
   for (i = 0; i < frames; i++) {
-    //printf("i %d rbp %lx rip %lx\n", i, th->samples[i].rbp, th->samples[i].rip); 
-    //printf("i %d rbp %lx rip %lx\n", i, tmp[frames - i - 1].rbp, tmp[frames - i - 1].rip);
     th->samples[i].rip = tmp[frames - i - 1].rip;
     th->samples[i].rbp = tmp[frames - i - 1].rbp;
 

@@ -15,7 +15,7 @@
 
 ldb_shmseg *ldb_shared;
 
-typedef struct {   
+typedef struct {
   void *(*worker_func)(void *param);
   void *param;
 } pthread_param_t;
@@ -91,29 +91,36 @@ void *__ldb_thread_start(void *arg) {
   pthread_param_t real_thread_params;
 
   memcpy(&real_thread_params, arg, sizeof(pthread_param_t));
-
   free(arg);
+
+  /*
+    BUG FIX Oct 10, 2024 by Coulson:
+    Priviously we set base rbp to 0 as a stopping sign for stack unwinding,
+    but for Ubuntu 24.04 and newer glibc, this particular operation breaks
+    some thread cleanup code, causing corruptions.
+    So switched to using the stack_base address as the end of unwinding,
+    and reordered some operations.
+  */
 
   // initialize canary
   setup_canary();
-
-  // initialize stack
-  char *rbp = get_fs_rbp(); // this is the rbp of thread main
-
-  // set ngen to 0
-  *((uint64_t *)(rbp + 16)) = 0;
-  // set canary and tag
-  *((uint64_t *)(rbp + 8)) = (uint64_t)LDB_CANARY << 32;
-  // set old RBP
-  *((uint64_t *)rbp) = 0;
-
-  printf("New interposed thread is starting... thread ID = %ld\n", syscall(SYS_gettid));
-  printf("ngen = %lu, tls rbp = %p, real rbp = %p, tls = %p - %p\n", get_ngen(), get_fs_rbp(), get_rbp(), (void *)(rdfsbase()-200), (void *)rdfsbase());
 
   // attach shared memory
   if (unlikely(!ldb_shared)) {
     ldb_shared = attach_shared_memory();
   }
+
+  // initialize stack
+  char *rbp = get_fs_rbp(); // this is the rbp of thread main
+
+  // Set ngen to 0
+  *((uint64_t *)(rbp + 16)) = 0;
+  // Set canary and tag
+  *((uint64_t *)(rbp + 8)) = (uint64_t)LDB_CANARY << 32;
+
+  printf("New interposed thread is starting... thread ID = %ld\n", syscall(SYS_gettid));
+  printf("ngen = %lu, tls rbp = %p, real rbp = %p, tls = %p - %p\n",
+    get_ngen(), get_fs_rbp(), get_rbp(), (void *)(rdfsbase()-200), (void *)rdfsbase());
 
   // allocate & initialize event buffer
   ldb_event_buffer_t *ebuf = (ldb_event_buffer_t *)malloc(sizeof(ldb_event_buffer_t));
@@ -126,7 +133,7 @@ void *__ldb_thread_start(void *arg) {
   struct timespec now;
   clock_gettime(CLOCK_MONOTONIC_RAW, &now);
 
-  // start tracking
+  // start tracking (populate thread info)
   pthread_spin_lock(&(ldb_shared->ldb_tlock));
   tidx = get_tidx();
   pid_t id = syscall(SYS_gettid);
@@ -146,7 +153,7 @@ void *__ldb_thread_start(void *arg) {
   event_record(ebuf, LDB_EVENT_THREAD_CREATE, now, id,
                (uintptr_t)real_thread_params.worker_func, 0, 0);
 
-  // execute real thread
+  // finally, execute the real thread function
   ret = real_thread_params.worker_func(real_thread_params.param);
 
   // record an event for the exiting of the thread
@@ -158,7 +165,7 @@ void *__ldb_thread_start(void *arg) {
   put_tidx(tidx);
   pthread_spin_unlock(&(ldb_shared->ldb_tlock));
 
-  printf("Application thread is exitting... %lu data point ignored\n", ebuf->nignored);
+  printf("Application thread is exiting... %lu data point ignored\n", ebuf->nignored);
 
   free(ebuf->events);
   free(ebuf);
@@ -428,7 +435,7 @@ void free(void *ptr) {
     }
   }
 
-  return real_free(ptr); 
+  return real_free(ptr);
 }
 
 /* other useful functions */

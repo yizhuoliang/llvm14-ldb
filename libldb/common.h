@@ -45,7 +45,7 @@ enum ldb_event_type {
 };
 
 typedef struct {
-  int event_type; 
+  int event_type;
   uint32_t sec;
   uint32_t nsec;
   uint32_t tid;

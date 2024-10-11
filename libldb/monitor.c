@@ -17,7 +17,7 @@ static void clock_get_now(struct timespec *ts) {
 
 static uint64_t elapsed_ns(struct timespec *start, struct timespec *end) {
   return (end->tv_sec - start->tv_sec) * 1000000000 +
-	 (end->tv_nsec - start->tv_nsec);
+         (end->tv_nsec - start->tv_nsec);
 }
 
 struct tls_shared_region {
@@ -31,6 +31,7 @@ struct stack_sample {
   uint64_t rbp;
   uint64_t gen;
   struct timespec start_ts;
+  int depth; // Added depth field
 };
 
 struct thread {
@@ -40,7 +41,7 @@ struct thread {
   int cnt;
   uint64_t last_gen;
   uint64_t *stack_base;
-  struct timespec last_ts; 
+  struct timespec last_ts;
   struct tls_shared_region *tls;
   struct stack_sample samples[LDB_MAX_CALLDEPTH];
 };
@@ -49,6 +50,7 @@ struct thread {
 static int scan_stack(struct thread *th, uint64_t *rbp, struct stack_sample *sarr) {
   uint64_t *top = rbp - 1;
   int frames = 0;
+  struct stack_sample *start_sarr = sarr;
 
   // Heuristic: If start rbp is not valid, skip this iteration
   if (rbp <= (uint64_t *)0x7f0000000000 || rbp > th->stack_base)
@@ -68,7 +70,7 @@ static int scan_stack(struct thread *th, uint64_t *rbp, struct stack_sample *sar
     sarr->gen = *(rbp + 2);
     sarr->rip = *(rbp + 3);
     sarr->rbp = (uint64_t)rbp;
-    sarr++;
+    sarr++; // Move to next sample
     frames++;
 
     if (frames > LDB_MAX_CALLDEPTH) {
@@ -79,12 +81,18 @@ static int scan_stack(struct thread *th, uint64_t *rbp, struct stack_sample *sar
     rbp = (uint64_t *)*rbp;
   }
 
+  // Assign depths starting from 0 for the root caller
+  sarr = start_sarr; // Reset sarr to the beginning
+  for (int i = 0; i < frames; i++) {
+    sarr[i].depth = frames - i - 1;
+  }
+
   return frames;
 }
 
 static void
 emit_stack_samples(struct thread *th, struct stack_sample *samples,
-		   int pos, struct timespec now) {
+                   int pos, struct timespec now) {
   uint64_t latency;
   int i;
 
@@ -94,13 +102,15 @@ emit_stack_samples(struct thread *th, struct stack_sample *samples,
       if (pos >= 0 && s->rbp != samples[pos].rbp) {
         printf("oops rbp %lx %lx rip %lx %lx\n", s->rbp, samples[pos].rbp, s->rip, samples[pos].rip);
       }
-      
+
       continue;
     }
 
     latency = elapsed_ns(&s->start_ts, &now);
+    // Include depth in arg3 by packing it with s->gen, to aovid adding a new arg
+    uint64_t gen_depth = (s->gen << 16) | (s->depth & 0xFFFF);
     event_record(th->ebuf, LDB_EVENT_STACK, now, th->thread_id,
-                 latency, s->rip, s->gen);
+                 latency, s->rip, gen_depth);
     //printf("gen %ld id %d rip %lx latency %ld\n", s->gen, th->thread_id, s->rip, latency);
   }
 }
@@ -120,7 +130,7 @@ static void scan_thread(struct thread *th) {
   // Get the current time
   clock_get_now(&now);
 
-  // Scan the stack and gather frames 
+  // Scan the stack and gather frames
   frames = scan_stack(th, (uint64_t *)rbp, tmp);
   uint64_t end_gen = ACCESS_ONCE(th->tls->gen);
   uint64_t end_rbp = ACCESS_ONCE(th->tls->rbp);
@@ -141,10 +151,11 @@ static void scan_thread(struct thread *th) {
 
   // Store frames (in reverse so top is first) for next comparison
   for (i = 0; i < frames; i++) {
-    //printf("i %d rbp %lx rip %lx\n", i, th->samples[i].rbp, th->samples[i].rip); 
+    //printf("i %d rbp %lx rip %lx\n", i, th->samples[i].rbp, th->samples[i].rip);
     //printf("i %d rbp %lx rip %lx\n", i, tmp[frames - i - 1].rbp, tmp[frames - i - 1].rip);
     th->samples[i].rip = tmp[frames - i - 1].rip;
     th->samples[i].rbp = tmp[frames - i - 1].rbp;
+    th->samples[i].depth = tmp[frames - i - 1].depth;
 
     // don't update the time if the frame hasn't changed
     if (tmp[frames - i - 1].gen == th->samples[i].gen)

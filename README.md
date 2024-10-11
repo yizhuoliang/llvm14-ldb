@@ -8,10 +8,17 @@
   * ``git clone git@github.com:inhocho89/llvm14-ldb.git``
 
 2. Compile LLVM
+Note that `gcc-13` won't work. We need `gcc-11`.
+So sometimes you need to explicitly install a lower version, then export CC=gcc-11 export CXX=g++-11
   * ``llvm14-ldb> mkdir build``
   * ``llvm14-ldb> cd build``
-  * ``cmake -DLLVM_TARGETS_TO_BUILD=X86 -DLLVM_TARGET_ARCH=X86 -DCMAKE_BUILD_TYPE="Release" \
-  -DLLVM_BUILD_EXAMPLES=1 -DLLVM_INCLUDE_EXAMPLES=1 \ -DLLVM_ENABLE_PROJECTS="clang;libcxx;libcxxabi" -G "Unix Makefiles" ../llvm``
+  * ``cmake -DLLVM_TARGETS_TO_BUILD=X86 \
+      -DLLVM_TARGET_ARCH=X86 \
+      -DCMAKE_BUILD_TYPE="Release" \
+      -DLLVM_BUILD_EXAMPLES=1 \
+      -DLLVM_INCLUDE_EXAMPLES=1 \
+      -DLLVM_ENABLE_PROJECTS="clang;libcxx;libcxxabi" \
+      -G "Unix Makefiles" ../llvm``
   * ``llvm14-ldb/build> cmake --build . -j$(nproc)``
 
 3. Compile LDB library

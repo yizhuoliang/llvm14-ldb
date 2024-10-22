@@ -95,7 +95,7 @@ void *__ldb_thread_start(void *arg) {
 
   /*
     BUG FIX Oct 10, 2024 by Coulson:
-    Priviously we set base rbp to 0 as a stopping sign for stack unwinding,
+    Previously we set base rbp to 0 as a stopping sign for stack unwinding,
     but for Ubuntu 24.04 and newer glibc, this particular operation breaks
     some thread cleanup code, causing corruptions.
     So switched to using the stack_base address as the end of unwinding,
@@ -118,7 +118,17 @@ void *__ldb_thread_start(void *arg) {
   // Set canary and tag
   *((uint64_t *)(rbp + 8)) = (uint64_t)LDB_CANARY << 32;
 
-  printf("New interposed thread is starting... thread ID = %ld\n", syscall(SYS_gettid));
+  Dl_info info;
+  if (dladdr(real_thread_params.worker_func, &info) && info.dli_sname) {
+    printf("New interposed thread is starting... thread ID = %ld, function = %s\n",
+           syscall(SYS_gettid), info.dli_sname);
+  } else {
+    // if we failed to resolve the function name, just print its address
+    // -rdynamic should be used to compile the program!
+    printf("New interposed thread is starting... thread ID = %ld, function = %p\n",
+           syscall(SYS_gettid), real_thread_params.worker_func);
+  }
+
   printf("ngen = %lu, tls rbp = %p, real rbp = %p, tls = %p - %p\n",
     get_ngen(), get_fs_rbp(), get_rbp(), (void *)(rdfsbase()-200), (void *)rdfsbase());
 

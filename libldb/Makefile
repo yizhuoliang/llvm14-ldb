@@ -4,7 +4,7 @@ CC = $(ROOT_PATH)/build/bin/clang
 GCC = /usr/bin/gcc
 AR = /usr/bin/ar
 
-LDB_CFLAGS = -O3 -g -fdebug-default-version=3 -fno-omit-frame-pointer -rdynamic -I./include
+LDB_CFLAGS = -O3 -g -fdebug-default-version=3 -fno-omit-frame-pointer -I./include
 
 all: libshim.so libldb.a
 
@@ -12,7 +12,7 @@ libldb.a: hook.o logger.o monitor.o event.o tag.o
 	$(AR) qc $@ $^
 
 libshim.so: shim.o event.o
-	$(CC) -shared -lpthread -ldl -o $@ $^
+	$(CC) -shared -lpthread -ldl -rdynamic -o $@ $^
 
 shim.o: shim.c
 	$(CC) -O1 -g -fdebug-default-version=3 -fno-omit-frame-pointer -fPIC -o $@ -c $<

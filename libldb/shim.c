@@ -12,6 +12,7 @@
 #include <dlfcn.h>
 
 #include "common.h"
+#include "lock.h"
 
 ldb_shmseg *ldb_shared;
 
@@ -47,7 +48,8 @@ static inline int get_tidx() {
 }
 
 static inline void put_tidx(int tidx) {
-  memset(&ldb_shared->ldb_thread_infos[tidx], 0, sizeof(ldb_thread_info_t));
+  // here we also implicitly unlocked the ldb_thread_info_lock_t
+  memset(&ldb_shared->ldb_thread_infos[tidx], 0, sizeof(ldb_thread_info_t) - sizeof(ldb_thread_info_lock_t));
 
   // This is the last slot
   if (tidx == ldb_shared->ldb_max_idx - 1) {
@@ -147,10 +149,18 @@ void *__ldb_thread_start(void *arg) {
   pthread_spin_lock(&(ldb_shared->ldb_tlock));
   tidx = get_tidx();
   pid_t id = syscall(SYS_gettid);
-  ldb_shared->ldb_thread_infos[tidx].id = id;
+
+  // Populate other metadata
   ldb_shared->ldb_thread_infos[tidx].fsbase = (char **)(rdfsbase());
   ldb_shared->ldb_thread_infos[tidx].stackbase = rbp;
   ldb_shared->ldb_thread_infos[tidx].ebuf = ebuf;
+
+  // ensure memory ordering of before setting 'id'
+  atomic_thread_fence(memory_order_release);
+
+  // Set 'id' to indicate the thread is ready
+  ldb_shared->ldb_thread_infos[tidx].id = id;
+
   pthread_spin_unlock(&(ldb_shared->ldb_tlock));
 
   ldb_shared->ldb_thread_infos[tidx].ts_wait = now;
@@ -172,7 +182,10 @@ void *__ldb_thread_start(void *arg) {
 
   // stop tracking
   pthread_spin_lock(&(ldb_shared->ldb_tlock));
-  put_tidx(tidx);
+  // acquire the write lock before clearing 'id' and other metadata
+  ldb_thread_info_lock_acquire_write(&ldb_shared->ldb_thread_infos[tidx].lock);
+  put_tidx(tidx); // setting the thread's id and other metadata to 0 in shm
+  ldb_thread_info_lock_release_write(&ldb_shared->ldb_thread_infos[tidx].lock);
   pthread_spin_unlock(&(ldb_shared->ldb_tlock));
 
   printf("Application thread is exiting... %lu data point ignored\n", ebuf->nignored);

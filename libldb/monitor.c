@@ -1,6 +1,7 @@
 #define _GNU_SOURCE
 #include <time.h>
 #include "common.h"
+#include "lock.h"
 
 #define LDB_MONITOR_PERIOD 0
 
@@ -50,6 +51,11 @@ static int scan_stack(struct thread *th, uint64_t *rbp, struct stack_sample *sar
   int frames = 0;
 
   // Heuristic: If start rbp is not valid, skip this iteration
+  /*
+    BUG FIX Oct 10 by Coulson:
+    Removed the heuristic of comparing stack_base with the kernel's stack address boundary,
+    because that particular boundary changes in newer kernel versions.
+  */
   if (rbp > th->stack_base) {
     // printf("scan_stack: Invalid starting RBP %p for thread %d, unwind start rbp: %p\n", rbp, th->thread_id, th->stack_base);
     return -1;
@@ -197,17 +203,41 @@ void *monitor_main(void *arg) {
 #endif
     for (i = 0; i < LDB_MAX_NTHREAD; i++) {
       struct thread *th = &threads[i];
-      if (ldb_shared->ldb_thread_infos[i].id == 0)
+      /*
+        BUF FIX Oct 24 by Coulson:
+        Previously the monitor has a TOCTTOU race condition,
+        where the thread_info-> id is non-zero when checked,
+        but the TLS of the scanned thread is already freed as
+        the thread terminated.
+
+        So I use a simple spin lock, which doesn't block
+        the monitor/logger's, but prevent the user
+        program's thread to exit during scanning/logging.
+      */
+
+      ldb_thread_info_t *thread_info = &ldb_shared->ldb_thread_infos[i];
+
+      if (!ldb_thread_info_lock_try_acquire_read(&thread_info->lock)) {
         continue;
+      }
+
+      pid_t id = thread_info->id;
+      if (id == 0) {
+        ldb_thread_info_lock_release_read(&thread_info->lock);
+        continue;
+      }
+      atomic_thread_fence(memory_order_acquire);
 
       // initialize per-thread state
-      th->thread_id = ldb_shared->ldb_thread_infos[i].id;
-      uint64_t *tmp = (uint64_t *)ldb_shared->ldb_thread_infos[i].fsbase;
+      th->thread_id = id;
+      uint64_t *tmp = (uint64_t *)thread_info->fsbase;
       th->tls = (struct tls_shared_region *)(tmp - 43);
-      th->stack_base = (uint64_t *)ldb_shared->ldb_thread_infos[i].stackbase;
+      th->stack_base = (uint64_t *)thread_info->stackbase;
 
       // scan the thread's stack
       scan_thread(th);
+
+      ldb_thread_info_lock_release_read(&thread_info->lock);
     }
 #if LDB_MONITOR_PERIOD > 0
     clock_get_now(&scan_finish);

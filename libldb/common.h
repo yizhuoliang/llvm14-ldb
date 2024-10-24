@@ -10,6 +10,8 @@
 #include <sys/ipc.h>
 #include <sys/shm.h>
 
+#include "lock.h"
+
 #define CYCLES_PER_US 2396
 #define SHM_KEY 401916
 #define LDB_MAX_NTHREAD 128
@@ -45,7 +47,7 @@ enum ldb_event_type {
 };
 
 typedef struct {
-  int event_type; 
+  int event_type;
   uint32_t sec;
   uint32_t nsec;
   uint32_t tid;
@@ -71,8 +73,8 @@ typedef struct {
   struct timespec ts_wait;
   struct timespec ts_lock;
   struct timespec ts_scan;
+  ldb_thread_info_lock_t lock;
 } ldb_thread_info_t;
-
 typedef struct {
   ldb_thread_info_t *ldb_thread_infos;
   int ldb_nthread;

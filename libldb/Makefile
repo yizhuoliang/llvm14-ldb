@@ -12,7 +12,7 @@ libldb.a: hook.o logger.o monitor.o event.o tag.o
 	$(AR) qc $@ $^
 
 libshim.so: shim.o event.o
-	$(CC) -shared -lpthread -ldl -o $@ $^
+	$(CC) -shared -lpthread -ldl -rdynamic -o $@ $^
 
 shim.o: shim.c
 	$(CC) -O1 -g -fdebug-default-version=3 -fno-omit-frame-pointer -fPIC -o $@ -c $<

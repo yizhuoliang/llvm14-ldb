@@ -1,6 +1,7 @@
 #define _GNU_SOURCE
 #include "common.h"
 #include "ldb/logger.h"
+#include "lock.h"
 
 #define LDB_EVENT_OUTPUT "ldb.data"
 
@@ -37,17 +38,25 @@ void *logger_main(void *arg) {
     }
 
     for (int tidx = 0; tidx < ldb_shared->ldb_max_idx; ++tidx) {
-      // Skip if event buffer is not valid
-      if (ldb_shared->ldb_thread_infos[tidx].ebuf == NULL) {
+      ldb_thread_info_t *thread_info = &ldb_shared->ldb_thread_infos[tidx];
+
+      if (!ldb_thread_info_lock_try_acquire_read(&thread_info->lock)) {
         continue;
       }
 
-      ebuf = ldb_shared->ldb_thread_infos[tidx].ebuf;
+      // Skip if event buffer is not valid
+      if (thread_info->ebuf == NULL) {
+        ldb_thread_info_lock_release_read(&thread_info->lock);
+        continue;
+      }
+
+      ebuf = thread_info->ebuf;
       head = ebuf->head;
       barrier();
       len = ebuf->tail - head;
 
       if (len <= 0) {
+        ldb_thread_info_lock_release_read(&thread_info->lock);
         continue;
       }
       int end = LDB_EVENT_BUF_SIZE - (head % LDB_EVENT_BUF_SIZE);
@@ -57,6 +66,8 @@ void *logger_main(void *arg) {
       fflush(ldb_fout);
 
       ebuf->head = head + len;
+
+      ldb_thread_info_lock_release_read(&thread_info->lock);
     }// for
   }// while (running)
 

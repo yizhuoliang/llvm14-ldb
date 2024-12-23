@@ -21,6 +21,7 @@ extern "C" {
 #include "ldb/tag.h"
 //#include "ldb/logger.h"
 }
+#include "hrperf_api.h"
 
 #define likely(x)       __builtin_expect((x),1)
 #define unlikely(x)     __builtin_expect((x),0)
@@ -408,5 +409,6 @@ int main(int argc, char *argv[]) {
   PopulateIndex();
 
 //  logger_reset();
+  hrperf_start(); // the client should return
   runServer();
 }

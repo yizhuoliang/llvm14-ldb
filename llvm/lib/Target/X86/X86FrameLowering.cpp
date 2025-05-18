@@ -43,10 +43,37 @@ STATISTIC(NumFrameExtraProbe,
 using namespace llvm;
 
 // LDB: LAO modified
+// Int-free hiresperf:
+// Coulson modified LocalAreaOffset;
+// for each slot, reserve 3 more size_t for pmcs
+// and 1 more size_t for cpu_id
+// and we want 2 slots in each stack frame
+// so we reserve 2 * (3 + 1) = 8 size_t
+// Layout:
+/*
+  Higher Addres
+
+  rbp + 88 | Return address saved by CALL
+  -------- 80 Extra Bytes Allocated ----------
+  rbp + 80 | s2[3] Unused
+  rbp + 72 | s2[2] Unused
+  rbp + 64 | s2[1] For this frame's future callees to write PMC1
+  rbp + 56 | s2[0] For this frame's future callees to write PMC0
+  rbp + 48 | s1[3] Unused
+  rbp + 40 | s1[2] Unused
+  rbp + 32 | s1[1] This frame's start's PMC1
+  rbp + 24 | s1[0] This frame's start's PMC0
+  rbp + 16 | This frame's generation number
+  rbp + 8  | Canary
+  -------- End of Extra Allocation ----------
+  rbp + 0  | This frame's RBP
+
+  Lower Address
+*/
 X86FrameLowering::X86FrameLowering(const X86Subtarget &STI,
                                    MaybeAlign StackAlignOverride)
     : TargetFrameLowering(StackGrowsDown, StackAlignOverride.valueOrOne(),
-                          STI.is64Bit() ? -24 : -12),
+                          STI.is64Bit() ? -88 : -44),
       STI(STI), TII(*STI.getInstrInfo()), TRI(STI.getRegisterInfo()) {
   // Cache a bunch of frame-related predicates for this subtarget.
   SlotSize = TRI->getSlotSize();
@@ -1553,9 +1580,12 @@ void X86FrameLowering::emitPrologue(MachineFunction &MF,
       NumBytes = alignTo(NumBytes, MaxAlign);
 
     // LDB: Reserve stack space
+    // Int-free hiresperf: Coulson modified;
+    // As we modified LocalAreaOffset, we also need to add instrauction
+    // to move the rsp for the extra space
     BuildMI(MBB, MBBI, DL, TII.get(X86::SUB64ri8), X86::RSP)
 	    .addUse(X86::RSP)
-	    .addImm(16);
+	    .addImm(80);
 
     // Save EBP/RBP into the appropriate stack slot.
     BuildMI(MBB, MBBI, DL, TII.get(Is64Bit ? X86::PUSH64r : X86::PUSH32r))
@@ -1567,14 +1597,16 @@ void X86FrameLowering::emitPrologue(MachineFunction &MF,
       // Define the current CFA rule to use the provided offset.
       assert(StackSize);
       // LDB: 2 more stackGrowth
+      // Int-free hiresperf: Coulson modified; 8 more stackGrowth
       BuildCFI(MBB, MBBI, DL,
-               MCCFIInstruction::cfiDefCfaOffset(nullptr, -4 * stackGrowth));
+               MCCFIInstruction::cfiDefCfaOffset(nullptr, -12 * stackGrowth));
 
       // Change the rule for the FramePtr to be an "offset" rule.
       unsigned DwarfFramePtr = TRI->getDwarfRegNum(MachineFramePtr, true);
       // LDB: 2 more stackGrowth
+      // Int-free hiresperf: Coulson modified; 8 more stackGrowth
       BuildCFI(MBB, MBBI, DL, MCCFIInstruction::createOffset(
-                                  nullptr, DwarfFramePtr, 4 * stackGrowth));
+                                  nullptr, DwarfFramePtr, 12 * stackGrowth));
     }
 
     if (NeedsWinCFI) {
@@ -1670,7 +1702,75 @@ void X86FrameLowering::emitPrologue(MachineFunction &MF,
       MFI.setOffsetAdjustment(-StackSize);
   }
 
-  // LDB: Custom sequence in prologue (update ngen and rbp)
+  
+  // -------- Int-free hiresperf: Coulson modified;  -----------------
+  // --------- read PMC0 & PMC1 into s1 (first 16 Bytes) ---------
+
+  // --- PMC0 ------------------------------------------------------
+  // mov ecx, 0
+  BuildMI(MBB, MBBI, DL, TII.get(X86::MOV32ri), X86::ECX)
+    .addImm(0);
+
+  // rdpmc               ; RDX:RAX <- counter 0 (low in EAX, high in EDX)
+  BuildMI(MBB, MBBI, DL, TII.get(X86::RDPMC));
+
+  // shl rdx, 32
+  BuildMI(MBB, MBBI, DL, TII.get(X86::SHL64ri), X86::RDX)
+    .addReg(X86::RDX)      // source
+    .addImm(32);           // shift amount
+
+  // or rax, rdx           ; RAX = full 64-bit value
+  BuildMI(MBB, MBBI, DL, TII.get(X86::OR64rr), X86::RAX)
+    .addReg(X86::RAX)
+    .addReg(X86::RDX);
+
+  // movq %rax, 24(%rbp)   ; store into s1[0]
+  BuildMI(MBB, MBBI, DL, TII.get(X86::MOV64mr))
+    .addReg(X86::RBP).addImm(1)    // base = RBP, scale = 1
+    .addReg(0).addImm(24)          // disp = +24
+    .addReg(0)                     // seg = default
+    .addReg(X86::RAX);             // value to store
+
+
+  // --- PMC1 ------------------------------------------------------
+  // mov ecx, 1
+  BuildMI(MBB, MBBI, DL, TII.get(X86::MOV32ri), X86::ECX)
+    .addImm(1);
+
+  // rdpmc
+  BuildMI(MBB, MBBI, DL, TII.get(X86::RDPMC));
+
+  // shl rdx, 32
+  BuildMI(MBB, MBBI, DL, TII.get(X86::SHL64ri), X86::RDX)
+    .addReg(X86::RDX)
+    .addImm(32);
+
+  // or rax, rdx
+  BuildMI(MBB, MBBI, DL, TII.get(X86::OR64rr), X86::RAX)
+    .addReg(X86::RAX)
+    .addReg(X86::RDX);
+
+  // movq %rax, 32(%rbp)   ; store into s1[1]
+  BuildMI(MBB, MBBI, DL, TII.get(X86::MOV64mr))
+    .addReg(X86::RBP).addImm(1)
+    .addReg(0).addImm(32)          // disp = +32
+    .addReg(0)
+    .addReg(X86::RAX);
+
+  // --------- end of new RDPMC sequence ---------------------------
+
+  // Coulson Modified May 18 2025: should update TLS rbp before changing ngen
+  // 0. update __ldb_rbp
+  // movq %rbp, %fs:-280
+  BuildMI(MBB, MBBI, DL, TII.get(X86::MOV64mr))
+    .addReg(0).addImm(1)
+    .addReg(0).addImm(-280)
+    .addReg(X86::FS)
+    .addReg(X86::RBP);
+
+  // prevent reordering of the PMC polling and subsequent LDB sequence
+  BuildMI(MBB, MBBI, DL, TII.get(X86::MFENCE));
+  
   // 1. Copy generation number
   // movq %fs:-344, %r11
   BuildMI(MBB, MBBI, DL, TII.get(X86::MOV64rm))
@@ -1709,14 +1809,6 @@ void X86FrameLowering::emitPrologue(MachineFunction &MF,
     .addReg(0)
     .addReg(X86::R11);
 
-  // 4. update __ldb_rbp
-  // movq %rbp, %fs:-280
-  BuildMI(MBB, MBBI, DL, TII.get(X86::MOV64mr))
-    .addReg(0).addImm(1)
-    .addReg(0).addImm(-280)
-    .addReg(X86::FS)
-    .addReg(X86::RBP);
-
   // For EH funclets, only allocate enough space for outgoing calls. Save the
   // NumBytes value that we would've used for the parent frame.
   unsigned ParentFrameNumBytes = NumBytes;
@@ -1726,7 +1818,8 @@ void X86FrameLowering::emitPrologue(MachineFunction &MF,
   // Skip the callee-saved push instructions.
   bool PushedRegs = false;
   // LDB: 2 more stackGrowth
-  int StackOffset = 4 * stackGrowth;
+  // Int-free hiresperf: Coulson modified; 8 more stackGrowth
+  int StackOffset = 12 * stackGrowth;
 
   while (MBBI != MBB.end() &&
          MBBI->getFlag(MachineInstr::FrameSetup) &&
@@ -2187,6 +2280,95 @@ void X86FrameLowering::emitEpilogue(MachineFunction &MF,
       emitSPUpdate(MBB, MBBI, DL, Offset, /*InEpilogue*/true);
     }
 
+    // -------- Int-free hiresperf: Coulson modified; ---------------
+    {
+      // Use a scope to keep temporary register usage somewhat contained.
+
+      // 6) Load caller RBP → R10 (movq 0(%rbp), %r10)
+      BuildMI(MBB, MBBI, DL, TII.get(X86::MOV64rm), X86::R10)
+        .addReg(X86::RBP).addImm(1)
+        .addReg(0).addImm(0)
+        .addReg(0);
+
+      // ----- Canary Check moved here from prologue -----------------------
+      // Reload TLS canary into R11 as it might be clobbered
+      BuildMI(MBB, MBBI, DL, TII.get(X86::MOV64rm), X86::R11)
+        .addReg(0).addImm(1)
+        .addReg(0).addImm(-216)
+        .addReg(X86::FS);
+
+      // Load caller's saved RBP (already in R10)
+
+      // movq 8(%r10), %r13           ; load caller's canary slot
+      BuildMI(MBB, MBBI, DL, TII.get(X86::MOV64rm), X86::R13)
+        .addReg(X86::R10).addImm(1)
+        .addReg(0).addImm(8)
+        .addReg(0);
+
+      // cmpq %r11, %r13              ; compare our TLS-canary (R11) vs callerCanary (R13)
+      BuildMI(MBB, MBBI, DL, TII.get(X86::CMP64rr))
+        .addReg(X86::R11)
+        .addReg(X86::R13);
+
+      // sete %r10b                   ; set low byte of R10 = 1 if canaries equal
+      BuildMI(MBB, MBBI, DL, TII.get(X86::SETCCr), X86::R10B)
+        .addImm(X86::COND_E);
+      // ----- End of moved canary check ----------------------------------
+
+      // Pre-load original values from target slots
+      BuildMI(MBB, MBBI, DL, TII.get(X86::MOV64rm), X86::R12) // Load original s2[0]
+        .addReg(X86::R10).addImm(1)
+        .addReg(0).addImm(56)
+        .addReg(0);
+      BuildMI(MBB, MBBI, DL, TII.get(X86::MOV64rm), X86::R13) // Load original s2[1]
+        .addReg(X86::R10).addImm(1)
+        .addReg(0).addImm(64)
+        .addReg(0);
+
+      // Read PMC0
+      BuildMI(MBB, MBBI, DL, TII.get(X86::MOV32ri), X86::ECX).addImm(0);
+      BuildMI(MBB, MBBI, DL, TII.get(X86::RDPMC));
+      BuildMI(MBB, MBBI, DL, TII.get(X86::SHL64ri), X86::RDX).addReg(X86::RDX).addImm(32);
+      BuildMI(MBB, MBBI, DL, TII.get(X86::OR64rr), X86::RAX).addReg(X86::RAX).addReg(X86::RDX);
+      // PMC0 value is now in RAX
+
+      // Read PMC1 (use R14 as temporary accumulator)
+      BuildMI(MBB, MBBI, DL, TII.get(X86::MOV32ri), X86::ECX).addImm(1);
+      BuildMI(MBB, MBBI, DL, TII.get(X86::RDPMC)); // Result in EDX:EAX
+      BuildMI(MBB, MBBI, DL, TII.get(X86::MOV64rr), X86::R14).addReg(X86::RAX); // R14 = low bits (RAX)
+      BuildMI(MBB, MBBI, DL, TII.get(X86::SHL64ri), X86::RDX).addReg(X86::RDX).addImm(32); // RDX = high bits << 32
+      BuildMI(MBB, MBBI, DL, TII.get(X86::OR64rr), X86::R14).addReg(X86::R14).addReg(X86::RDX); // R14 |= RDX
+      // PMC1 value is now in R14
+
+      // Test the flag (R10B - result of canary check) instead of R11B
+      BuildMI(MBB, MBBI, DL, TII.get(X86::TEST8rr))
+        .addReg(X86::R10B)
+        .addReg(X86::R10B);
+
+      // Conditionally move PMC values into R12/R13 if flag was 1 (COND_NE: not equal zero)
+      BuildMI(MBB, MBBI, DL, TII.get(X86::CMOV64rr), X86::R12) // R12 = (flag != 0) ? RAX : R12
+        .addReg(X86::R12) // Dest (implicit)
+        .addReg(X86::RAX) // Src
+        .addImm(X86::COND_NE);
+      BuildMI(MBB, MBBI, DL, TII.get(X86::CMOV64rr), X86::R13) // R13 = (flag != 0) ? R14 : R13
+        .addReg(X86::R13) // Dest (implicit)
+        .addReg(X86::R14) // Src
+        .addImm(X86::COND_NE);
+
+      // Store the (conditionally updated) values back
+      BuildMI(MBB, MBBI, DL, TII.get(X86::MOV64mr))
+        .addReg(X86::R10).addImm(1)
+        .addReg(0).addImm(56)
+        .addReg(0)
+        .addReg(X86::R12);
+      BuildMI(MBB, MBBI, DL, TII.get(X86::MOV64mr))
+        .addReg(X86::R10).addImm(1)
+        .addReg(0).addImm(64)
+        .addReg(0)
+        .addReg(X86::R13);
+    }
+    // ===== end Coulson's edit (CMOV version) =====
+
     // Pop EBP.
     BuildMI(MBB, MBBI, DL, TII.get(Is64Bit ? X86::POP64r : X86::POP32r),
             MachineFramePtr)
@@ -2194,10 +2376,11 @@ void X86FrameLowering::emitEpilogue(MachineFunction &MF,
 
     // LDB: custom sequence in epilogue
     // 2. Destroy reserved space
-    // add $rsp, 16
+    // Coulson Hiresperf: updated this inst
+    // add $rsp, 80
     BuildMI(MBB, MBBI, DL, TII.get(X86::ADD64ri8), X86::RSP)
 	    .addUse(X86::RSP)
-	    .addImm(16);
+	    .addImm(80);
     --MBBI;
 
     // 1. Update rbp

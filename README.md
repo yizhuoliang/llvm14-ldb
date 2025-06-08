@@ -3,15 +3,26 @@
 ## Quick start
 
 ### System Build
+0. Install GCC-11, this is the version we need for llvm-14. Then use
+`export CC=gcc-11 export CXX=g++-11`
+`
 1. Clone this repository
 
-  * ``git clone git@github.com:inhocho89/llvm14-ldb.git``
+  * ``git clone https://github.com/yizhuoliang/llvm14-ldb.git``
 
 2. Compile LLVM
   * ``llvm14-ldb> mkdir build``
   * ``llvm14-ldb> cd build``
-  * ``cmake -DLLVM_TARGETS_TO_BUILD=X86 -DLLVM_TARGET_ARCH=X86 -DCMAKE_BUILD_TYPE="Release" \
-  -DLLVM_BUILD_EXAMPLES=1 -DLLVM_INCLUDE_EXAMPLES=1 \ -DLLVM_ENABLE_PROJECTS="clang;libcxx;libcxxabi" -G "Unix Makefiles" ../llvm``
+  * The LLVM cmake command
+```
+cmake -G "Unix Makefiles" \
+  -DLLVM_TARGETS_TO_BUILD=X86 \
+  -DCMAKE_BUILD_TYPE=Release \
+  -DLLVM_BUILD_EXAMPLES=ON \
+  -DLLVM_INCLUDE_EXAMPLES=ON \
+  -DLLVM_ENABLE_PROJECTS="clang;libcxx;libcxxabi" \
+  ../llvm
+```
   * ``llvm14-ldb/build> cmake --build . -j$(nproc)``
 
 3. Compile LDB library
